@@ -19,8 +19,19 @@ filebeat.prospectors:
 
   # Paths that should be crawled and fetched. Glob based paths.
   paths:
-    - /var/log/*.log
+    - e:/big.log
     #- c:\programdata\elasticsearch\logs\*
+
+  fields:
+      app_id: testtesttest
+
+  harvester_buffer_size: 163840
+#  json.keys_under_root: true
+#  json.add_error_key: true
+#  json.overwrite_keys: true
+
+#  fields_under_root: true
+#  exclude_files: [".gz$"]
 
   # Exclude lines. A list of regular expressions to match. It drops the lines that are
   # matching any regular expression from the list.
@@ -80,7 +91,16 @@ filebeat.prospectors:
 #-------------------------- Elasticsearch output ------------------------------
 output.elasticsearch:
   # Array of hosts to connect to.
-  hosts: ["localhost:9200"]
+  hosts: ["http://192.168.10.144:9200"]
+
+  template.enabled: false
+  template.overwrite: false
+  index: 'gateway-log-%{+YYYY.MM.dd}'
+  send_direct: true
+  timeout: 5
+
+  worker: 1
+  bulk_max_size: 1000
 
   # Optional protocol and basic auth credentials.
   #protocol: "https"

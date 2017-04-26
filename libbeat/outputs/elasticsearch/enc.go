@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+
 	"github.com/elastic/beats/libbeat/common"
 )
 
@@ -164,8 +165,8 @@ func (b *directJsonEncoder) Add(meta, obj interface{}) error {
 	if outjson, ok := obj.(common.MapStr); ok {
 		message, ok := outjson["message"]
 		if ok {
-			b.buf.WriteByte('\n')
 			b.buf.WriteString(message.(string))
+			b.buf.WriteByte('\n')
 		} else {
 			b.buf.Truncate(pos)
 			return errors.New("no 'message' field in object")
