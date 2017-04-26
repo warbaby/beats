@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"github.com/elastic/beats/libbeat/common"
 )
 
 type bodyEncoder interface {
@@ -133,5 +135,45 @@ func (b *gzipEncoder) Add(meta, obj interface{}) error {
 	}
 
 	b.gzip.Flush()
+	return nil
+}
+
+type directJsonEncoder struct {
+	jsonEncoder
+}
+
+func newDirectJSONEncoder(buf *bytes.Buffer) *directJsonEncoder {
+	if buf == nil {
+		buf = bytes.NewBuffer(nil)
+	}
+	encoder := directJsonEncoder{}
+	encoder.buf = buf
+	return &encoder //directJsonEncoder{jsonEncoder{buf}}
+}
+
+func (b *directJsonEncoder) Add(meta, obj interface{}) error {
+	enc := json.NewEncoder(b.buf)
+	pos := b.buf.Len()
+
+	if err := enc.Encode(meta); err != nil {
+		b.buf.Truncate(pos)
+		return err
+	}
+
+	//get obj.message and add it to body directly
+	if outjson, ok := obj.(common.MapStr); ok {
+		message, ok := outjson["message"]
+		if ok {
+			b.buf.WriteByte('\n')
+			b.buf.WriteString(message.(string))
+		} else {
+			b.buf.Truncate(pos)
+			return errors.New("no 'message' field in object")
+		}
+	} else {
+		b.buf.Truncate(pos)
+		return errors.New("input object is not a map")
+	}
+
 	return nil
 }

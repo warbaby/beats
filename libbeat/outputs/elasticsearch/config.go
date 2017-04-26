@@ -20,6 +20,7 @@ type elasticsearchConfig struct {
 	Timeout          time.Duration      `config:"timeout"`
 	SaveTopology     bool               `config:"save_topology"`
 	Template         Template           `config:"template"`
+	SendDirect       bool               `config:"send_direct"` //use directJsonEncoder if true, and get type and @timestamp for message.
 }
 
 type Template struct {
@@ -56,6 +57,7 @@ var (
 		CompressionLevel: 0,
 		TLS:              nil,
 		LoadBalance:      true,
+		SendDirect:       false,
 		Template: Template{
 			Enabled:  true,
 			Versions: TemplateVersions{Es2x: TemplateVersion{Enabled: true}},

@@ -284,6 +284,7 @@ func makeClientFactory(
 			Parameters:       params,
 			Timeout:          config.Timeout,
 			CompressionLevel: config.CompressionLevel,
+			SendDirect:       config.SendDirect,
 		}, onConnected)
 	}
 }

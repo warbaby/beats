@@ -18,6 +18,7 @@ import (
 	"github.com/elastic/beats/libbeat/outputs/mode"
 	"github.com/elastic/beats/libbeat/outputs/outil"
 	"github.com/elastic/beats/libbeat/outputs/transport"
+	"github.com/tidwall/gjson"
 )
 
 type Client struct {
@@ -27,6 +28,8 @@ type Client struct {
 	index    outil.Selector
 	pipeline *outil.Selector
 	params   map[string]string
+
+	sendDirect bool
 
 	// buffered bulk requests
 	bulkRequ *bulkRequest
@@ -45,6 +48,7 @@ type ClientSettings struct {
 	TLS                *transport.TLSConfig
 	Username, Password string
 	Parameters         map[string]string
+	SendDirect         bool
 	Index              outil.Selector
 	Pipeline           *outil.Selector
 	Timeout            time.Duration
@@ -146,7 +150,11 @@ func NewClient(
 	var encoder bodyEncoder
 	compression := s.CompressionLevel
 	if compression == 0 {
-		encoder = newJSONEncoder(nil)
+		if s.SendDirect {
+			encoder = newDirectJSONEncoder(nil)
+		} else {
+			encoder = newJSONEncoder(nil)
+		}
 	} else {
 		encoder, err = newGzipEncoder(compression, nil)
 		if err != nil {
@@ -173,6 +181,8 @@ func NewClient(
 		index:     s.Index,
 		pipeline:  pipeline,
 		params:    params,
+
+		sendDirect: compression == 0 && s.SendDirect,
 
 		bulkRequ: bulkRequ,
 
@@ -229,6 +239,10 @@ func (client *Client) PublishEvents(
 
 	body := client.encoder
 	body.Reset()
+
+	for _, one := range data {
+		client.processSendDirect(one.Event)
+	}
 
 	// encode events into bulk request buffer, dropping failed elements from
 	// events slice
@@ -524,6 +538,7 @@ func (client *Client) PublishEvent(data outputs.Data) error {
 	// insert the events one by one
 
 	event := data.Event
+	client.processSendDirect(event)
 	index := getIndex(event, client.index)
 	typ := event["type"].(string)
 
@@ -720,5 +735,26 @@ func closing(c io.Closer) {
 	err := c.Close()
 	if err != nil {
 		logp.Warn("Close failed with: %v", err)
+	}
+}
+
+func (client *Client) processSendDirect(event common.MapStr) {
+	if client.sendDirect {
+		if _, found := event["send_direct_flag"]; !found {
+			if message, found := event["message"]; found {
+				results := gjson.GetMany(message.(string), "@timestamp", "type")
+				if len(results) != 2 || results[0].Type == gjson.Null || results[1].Type == gjson.Null {
+					logp.Warn("can't find '@timestamp' or 'type' in raw message %s", message)
+				} else {
+					parsed, err := time.Parse(time.RFC3339, results[0].String())
+					if err != nil {
+						panic(err)
+					}
+					event["@timestamp"] = common.Time(parsed)
+					event["type"] = results[1].String()
+				}
+			}
+			event["send_direct_flag"] = true
+		}
 	}
 }
