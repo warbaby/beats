@@ -152,6 +152,20 @@ func newDirectJSONEncoder(buf *bytes.Buffer) *directJsonEncoder {
 	return &encoder //directJsonEncoder{jsonEncoder{buf}}
 }
 
+func isDirectFlagSet(obj interface{}) (bool, interface{}) {
+	if amap, ok := obj.(common.MapStr); ok {
+		_, direct := amap["send_direct_flag"]
+		if direct {
+			return direct, amap["message"]
+		} else {
+			return false, nil
+		}
+	} else {
+		return false, nil
+	}
+}
+
+// used by bulkEncodePublishRequest
 func (b *directJsonEncoder) Add(meta, obj interface{}) error {
 	enc := json.NewEncoder(b.buf)
 	pos := b.buf.Len()
@@ -161,10 +175,11 @@ func (b *directJsonEncoder) Add(meta, obj interface{}) error {
 		return err
 	}
 
-	//get obj.message and add it to body directly
-	if outjson, ok := obj.(common.MapStr); ok {
-		message, ok := outjson["message"]
-		if ok {
+	//if obj is map and have flag send_direct then send message field directly
+	//otherwise fallback to jsonEncoder's Add
+	direct, message := isDirectFlagSet(obj)
+	if direct {
+		if message != nil {
 			b.buf.WriteString(message.(string))
 			b.buf.WriteByte('\n')
 		} else {
@@ -172,9 +187,30 @@ func (b *directJsonEncoder) Add(meta, obj interface{}) error {
 			return errors.New("no 'message' field in object")
 		}
 	} else {
-		b.buf.Truncate(pos)
-		return errors.New("input object is not a map")
+		if err := enc.Encode(obj); err != nil {
+			b.buf.Truncate(pos)
+			return err
+		}
 	}
 
 	return nil
+}
+
+// used by Connection.request which is called by client.Index and client.Ingest
+func (b *directJsonEncoder) Marshal(obj interface{}) error {
+	b.Reset()
+
+	direct, message := isDirectFlagSet(obj)
+	if direct {
+		if message != nil {
+			b.buf.WriteString(message.(string))
+			b.buf.WriteByte('\n')
+			return nil
+		} else {
+			return errors.New("no 'message' field in object")
+		}
+	} else {
+		enc := json.NewEncoder(b.buf)
+		return enc.Encode(obj)
+	}
 }
